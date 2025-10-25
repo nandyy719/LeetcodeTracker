@@ -1,0 +1,32 @@
+{
+    "manifest_version": 3,
+    "name": "LeetCode Tracker",
+    "version": "2.0",
+    "description": "Track your LeetCode progress, analyze submissions, and export your solutions. Get insights into your coding journey with detailed statistics and calendar views.",
+    "permissions": [
+      "cookies",
+      "storage",
+      "activeTab",
+      "scripting"
+    ],
+    "host_permissions": [
+      "https://leetcode.com/*",
+      "https://leetcode.com/graphql/*",
+      "https://alfa-leetcode-api.onrender.com/*"
+    ],
+    "background": {
+      "service_worker": "background.js"
+    },
+    "action": {
+      "default_popup": "popup.html",
+      "default_title": "LeetCode Tracker"
+    },
+    "content_scripts": [
+      {
+        "matches": ["https://leetcode.com/*"],
+        "js": ["content.js"],
+        "run_at": "document_end"
+      }
+    ]
+  }
+  

@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>LeetCode Tracker</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="header">
+      <h2>LeetCode Tracker</h2>
+      <p class="subtitle">Track your progress and analyze your solutions</p>
+    </div>
+
+    <div class="input-section">
+      <label for="username">Username</label>
+      <input type="text" id="username" placeholder="Enter your LeetCode username" />
+      
+      <div class="button-group">
+        <button id="testConnection" class="btn-secondary">Test Connection</button>
+        <button id="fetchProfile" class="btn-secondary">Get Profile</button>
+        <button id="fetchSubmissions" class="btn-primary">Get Submissions</button>
+      </div>
+    </div>
+
+    <div class="stats-section" id="statsSection" style="display: none;">
+      <div class="stat-card">
+        <div class="stat-number" id="totalSolved">0</div>
+        <div class="stat-label">Problems Solved</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number" id="totalSubmissions">0</div>
+        <div class="stat-label">Total Submissions</div>
+      </div>
+    </div>
+
+    <div class="controls-section">
+      <label for="limit">Number of Submissions</label>
+      <select id="limit">
+        <option value="20">20</option>
+        <option value="50" selected>50</option>
+        <option value="100">100</option>
+        <option value="200">200</option>
+        <option value="500">500</option>
+      </select>
+
+      <div class="filter-section">
+        <label for="languageFilter">Filter by Language</label>
+        <select id="languageFilter">
+          <option value="">All Languages</option>
+          <option value="python3">Python3</option>
+          <option value="java">Java</option>
+          <option value="cpp">C++</option>
+          <option value="javascript">JavaScript</option>
+          <option value="c">C</option>
+          <option value="csharp">C#</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="status" class="status-message"></div>
+
+    <div class="tabs">
+      <button class="tab-button active" data-tab="submissions">Submissions</button>
+      <button class="tab-button" data-tab="calendar">Calendar</button>
+      <button class="tab-button" data-tab="export">Export</button>
+    </div>
+
+    <div class="tab-content">
+      <div id="submissionsTab" class="tab-panel active">
+        <div id="results">
+          <table id="resultsTable">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Title</th>
+                <th>Language</th>
+                <th>Runtime</th>
+                <th>Memory</th>
+                <th>Date</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="resultsBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="calendarTab" class="tab-panel">
+        <div class="calendar-controls">
+          <button id="prevYear" class="btn-small">←</button>
+          <span id="currentYear">2024</span>
+          <button id="nextYear" class="btn-small">→</button>
+        </div>
+        <div id="calendarContent"></div>
+      </div>
+
+      <div id="exportTab" class="tab-panel">
+        <div class="export-section">
+          <h3>Export Options</h3>
+          <div class="export-buttons">
+            <button id="exportJSON" class="btn-export">Export as JSON</button>
+            <button id="exportCSV" class="btn-export">Export as CSV</button>
+            <button id="exportCode" class="btn-export">Export Code Files</button>
+          </div>
+          <div class="export-info">
+            <p>Export your submissions in various formats for analysis and backup.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="codeModal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="modalTitle">Code Solution</h3>
+          <span class="close">&times;</span>
+        </div>
+        <div class="modal-body">
+          <div class="code-info">
+            <span id="modalLanguage"></span>
+            <span id="modalRuntime"></span>
+            <span id="modalMemory"></span>
+          </div>
+          <pre id="modalCode"></pre>
+        </div>
+        <div class="modal-footer">
+          <button id="copyCode" class="btn-primary">Copy Code</button>
+          <button id="closeModal" class="btn-secondary">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
