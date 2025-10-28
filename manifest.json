@@ -1,0 +1,28 @@
+{
+    "manifest_version": 3,
+    "name": "LeetCode Submission Tracker",
+    "version": "1.0.0",
+    "description": "Track LeetCode submissions, compare solutions, and make notes",
+    "permissions": [
+      "storage",
+      "activeTab",
+      "cookies",
+      "scripting"
+    ],
+    "host_permissions": [
+      "https://leetcode.com/*"
+    ],
+    "action": {
+      "default_popup": "popup.html"
+    },
+    "content_scripts": [
+      {
+        "matches": ["https://leetcode.com/problems/*/submissions/*"],
+        "js": ["content.js"],
+        "run_at": "document_idle"
+      }
+    ],
+    "background": {
+      "service_worker": "background.js"
+    }
+  }
