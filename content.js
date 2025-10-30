@@ -2,6 +2,9 @@
 class LeetCodeExtractor {
     constructor() {
       this.data = {};
+      this.currentPath = window.location.pathname;
+      this._pageVersion = 0;
+      this._setupRouteObserversOnce();
     }
   
     // ==== __NEXT_DATA__ helpers (prefer these over DOM scraping when available) ====
@@ -75,14 +78,77 @@ class LeetCodeExtractor {
       return null;
     }
 
+    // Wait for SPA hydration/navigation to settle before extracting
+    async waitForPageStability(timeoutMs = 5000) {
+      const start = Date.now();
+      const hasReadySignals = () => {
+        const next = this.getNextData();
+        const problem = this.getProblemFromNextData();
+        const submission = this.getSubmissionFromNextData();
+        const monaco = document.querySelector('.monaco-editor');
+        return !!(next && (problem || submission)) || !!monaco;
+      };
+      while (Date.now() - start < timeoutMs) {
+        if (hasReadySignals()) return true;
+        await new Promise(r => setTimeout(r, 200));
+      }
+      return false;
+    }
+
+    // Observe route changes in SPA and update currentPath
+    _setupRouteObserversOnce() {
+      if (this._routeObserverInstalled) return;
+      this._routeObserverInstalled = true;
+      const self = this;
+      const _pushState = history.pushState;
+      const _replaceState = history.replaceState;
+      history.pushState = function() {
+        const ret = _pushState.apply(this, arguments);
+        self.currentPath = window.location.pathname;
+        self._pageVersion++;
+        self.data = {};
+        return ret;
+      };
+      history.replaceState = function() {
+        const ret = _replaceState.apply(this, arguments);
+        self.currentPath = window.location.pathname;
+        self._pageVersion++;
+        self.data = {};
+        return ret;
+      };
+      window.addEventListener('popstate', () => {
+        self.currentPath = window.location.pathname;
+        self._pageVersion++;
+        self.data = {};
+      });
+    }
+
     // Prefer Monaco API when available, then DOM fallback
     getMonacoCodeSafely() {
       try {
-        if (window.monaco && window.monaco.editor && window.monaco.editor.getModels) {
-          const models = window.monaco.editor.getModels();
-          if (models && models.length) {
-            const value = models[0].getValue();
-            if (value && value.trim().length > 0) return value;
+        if (window.monaco && window.monaco.editor) {
+          if (typeof window.monaco.editor.getEditors === 'function') {
+            const editors = window.monaco.editor.getEditors();
+            for (const ed of editors) {
+              try {
+                const dom = ed.getDomNode && ed.getDomNode();
+                if (!dom || !document.contains(dom)) continue;
+                const model = ed.getModel && ed.getModel();
+                if (model) {
+                  const v = model.getValue();
+                  if (v && v.trim().length > 0) return v;
+                }
+              } catch (e) {}
+            }
+          }
+          if (typeof window.monaco.editor.getModels === 'function') {
+            const models = window.monaco.editor.getModels();
+            if (models && models.length) {
+              for (const m of models) {
+                const v = m.getValue();
+                if (v && v.trim().length > 0) return v;
+              }
+            }
           }
         }
       } catch (e) {}
@@ -169,22 +235,47 @@ class LeetCodeExtractor {
   
     // Extract difficulty - may not be visible on submission page
     extractDifficulty() {
-      const selectors = [
-        '[class*="diff"]',
-        '[class*="difficulty"]',
-        'div[class*="text-difficulty"]'
-      ];
-      
-      for (const selector of selectors) {
-        const element = document.querySelector(selector);
-        if (element) {
-          const text = element.textContent.trim();
-          if (text.match(/Easy|Medium|Hard/i)) {
+      // 1) Prefer __NEXT_DATA__ anywhere in payload
+      const data = this.getNextData();
+      const isDiff = (v) => typeof v === 'string' && /^(Easy|Medium|Hard)$/i.test(v.trim());
+      const scanObj = (o, depth = 0) => {
+        if (!o || typeof o !== 'object' || depth > 6) return null; // cap depth
+        if (Array.isArray(o)) {
+          for (const it of o) {
+            const r = scanObj(it, depth + 1);
+            if (r) return r;
+          }
+          return null;
+        }
+        // direct property named difficulty
+        if (Object.prototype.hasOwnProperty.call(o, 'difficulty') && isDiff(o.difficulty)) {
+          return o.difficulty;
+        }
+        for (const k of Object.keys(o)) {
+          const v = o[k];
+          const r = scanObj(v, depth + 1);
+          if (r) return r;
+        }
+        return null;
+      };
+      const diffFromNext = scanObj(data || {});
+      if (diffFromNext) return diffFromNext;
+
+      // 2) DOM heuristic: look for a visible badge near the title
+      const titleEl = document.querySelector('h1[data-cypress="QuestionTitle"], h1, h2');
+      const container = titleEl ? titleEl.closest('div') || document.body : document.body;
+      const candidates = container.querySelectorAll('[data-difficulty], [class*="difficulty"], [class*="Difficulty"], span, div');
+      for (const el of candidates) {
+        const text = (el.textContent || '').trim();
+        if (/^(Easy|Medium|Hard)$/i.test(text)) {
+          // ensure element is visible
+          const style = window.getComputedStyle(el);
+          if (style && style.display !== 'none' && style.visibility !== 'hidden') {
             return text;
           }
         }
       }
-      
+
       return 'Unknown';
     }
   
@@ -506,14 +597,16 @@ class LeetCodeExtractor {
     async extractAllData() {
       try {
         console.log('=== Starting extraction ===');
+        const startVersion = this._pageVersion;
         // Wait a bit for the page to fully load
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 800));
+        await this.waitForPageStability(5000);
 
         // First, try pulling from Next.js data payload
-        const problem = this.getProblemFromNextData();
-        const submission = this.getSubmissionFromNextData();
+        let problem = this.getProblemFromNextData();
+        let submission = this.getSubmissionFromNextData();
 
-        this.data = {
+        let assembled = {
           problemName: (problem && problem.title) || this.extractProblemName(),
           difficulty: (problem && problem.difficulty) || this.extractDifficulty(),
           language: (submission && (submission.lang)) || this.extractLanguage(),
@@ -527,6 +620,41 @@ class LeetCodeExtractor {
           tags: Array.isArray(problem && problem.topicTags) ? problem.topicTags.map(t => t.name) : [],
           descriptionHTML: (problem && problem.content) || null
         };
+
+        // Quick retry if key fields look incomplete (SPA not yet hydrated fully)
+        const looksIncomplete = () => {
+          const unknownDiff = !assembled.difficulty || /Unknown/i.test(assembled.difficulty);
+          const nameFromUrl = assembled.problemName === 'Unknown Problem';
+          const emptyDesc = !assembled.descriptionHTML;
+          return unknownDiff || nameFromUrl || emptyDesc;
+        };
+        if (looksIncomplete()) {
+          console.log('Data looks incomplete; retrying after brief delay...');
+          await new Promise(r => setTimeout(r, 600));
+          if (this._pageVersion !== startVersion) {
+            console.log('Route changed during extraction, restarting.');
+            return this.extractAllData();
+          }
+          await this.waitForPageStability(3000);
+          problem = this.getProblemFromNextData() || problem;
+          submission = this.getSubmissionFromNextData() || submission;
+          assembled.problemName = (problem && problem.title) || assembled.problemName;
+          assembled.difficulty = (problem && problem.difficulty) || assembled.difficulty;
+          assembled.tags = Array.isArray(problem && problem.topicTags) ? problem.topicTags.map(t => t.name) : assembled.tags;
+          assembled.descriptionHTML = (problem && problem.content) || assembled.descriptionHTML;
+          if (!submission || !submission.code) {
+            // Try to refresh Monaco-stored code too
+            const monacoCode = this.getMonacoCodeSafely();
+            if (monacoCode && monacoCode.length > 10) assembled.code = monacoCode;
+          }
+        }
+
+        if (this._pageVersion !== startVersion) {
+          console.log('Route changed after assembling data, restarting.');
+          return this.extractAllData();
+        }
+
+        this.data = assembled;
   
         console.log('=== Extracted data ===', this.data);
         return this.data;

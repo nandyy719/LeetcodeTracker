@@ -1,5 +1,6 @@
 // Popup script
 let currentData = null;
+let editingFromList = false;
 
 // DOM elements
 const extractBtn = document.getElementById('extractBtn');
@@ -23,58 +24,64 @@ function showMessage(text, type = 'success') {
   }, 3000);
 }
 
-// Format data for display
-function formatDataPreview(data) {
-  const statusClass = data.status === 'Accepted' ? 'accepted' : 'wrong';
-  
-  return `
+// Render editable form for data
+function renderEditableForm(data) {
+  const difficulties = ['Easy','Medium','Hard'];
+  const statuses = ['Accepted','Wrong Answer','Time Limit Exceeded','Runtime Error','Memory Limit Exceeded','Compile Error','Output Limit Exceeded','Unknown'];
+  const langs = ['Python3','Python','Java','JavaScript','TypeScript','C++','C','C#','Go','Rust','Swift','Kotlin','PHP','Scala','Other'];
+
+  dataPreview.innerHTML = `
     <div class="field">
       <div class="field-label">Problem</div>
-      <div class="field-value"><strong>${data.problemName || 'Unknown'}</strong></div>
-    </div>
-    <div class="field">
-      <div class="field-label">Difficulty</div>
-      <div class="field-value">${data.difficulty}</div>
+      <input type="text" id="problemNameInput" value="${escapeHtml(data.problemName || '')}">
     </div>
     <div class="field">
       <div class="field-label">Language</div>
-      <div class="field-value">${data.language}</div>
+      <select id="languageInput">
+        ${langs.map(l => `<option ${String(data.language||'')===l?'selected':''}>${l}</option>`).join('')}
+      </select>
     </div>
-    <div class="field">
-      <div class="field-label">Status</div>
-      <div class="field-value">
-        <span class="status ${statusClass}">${data.status}</span>
+    <div class="inline-fields">
+      <div class="field">
+        <div class="field-label">Difficulty</div>
+        <select id="difficultyInput">
+          ${difficulties.map(d => `<option ${data.difficulty===d?'selected':''}>${d}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field">
+        <div class="field-label">Status</div>
+        <select id="statusInput">${statuses.map(s => `<option ${data.status===s?'selected':''}>${s}</option>`).join('')}</select>
       </div>
     </div>
-    <div class="field">
-      <div class="field-label">Test Cases</div>
-      <div class="field-value">${data.testCases.passed} / ${data.testCases.total} passed</div>
-    </div>
-    ${data.performance.runtime ? `
-    <div class="field">
-      <div class="field-label">Performance</div>
-      <div class="field-value">
-        Runtime: ${data.performance.runtime}${data.performance.runtimePercentile ? ` (Beats ${data.performance.runtimePercentile})` : ''}<br>
-        Memory: ${data.performance.memory || 'N/A'}${data.performance.memoryPercentile ? ` (Beats ${data.performance.memoryPercentile})` : ''}
+    <div class="inline-fields">
+      <div class="field">
+        <div class="field-label">Test Cases Passed</div>
+        <input type="number" id="testsPassedInput" value="${Number(data?.testCases?.passed||0)}">
+      </div>
+      <div class="field">
+        <div class="field-label">Test Cases Total</div>
+        <input type="number" id="testsTotalInput" value="${Number(data?.testCases?.total||0)}">
       </div>
     </div>
-    ` : ''}
-    ${data.code && data.code !== 'Code not found' ? `
     <div class="field">
       <div class="field-label">Code</div>
-      <div class="field-value">
-        <pre class="code-preview">${escapeHtml(data.code)}</pre>
-        <div style="font-size: 11px; color: #888; margin-top: 4px;">
-          ${data.code.split('\n').length} lines • ${data.code.length} characters
-        </div>
-      </div>
-    </div>
-    ` : ''}
-    <div class="field">
-      <div class="field-label">Timestamp</div>
-      <div class="field-value">${new Date(data.timestamp).toLocaleString()}</div>
+      <textarea id="codeInput">${escapeHtml(data.code || '')}</textarea>
     </div>
   `;
+}
+
+function collectFormEditsInto(data) {
+  const get = (id) => document.getElementById(id);
+  const edited = { ...data };
+  edited.problemName = get('problemNameInput')?.value || edited.problemName;
+  edited.difficulty = get('difficultyInput')?.value || edited.difficulty;
+  edited.language = get('languageInput')?.value || edited.language;
+  edited.status = get('statusInput')?.value || edited.status;
+  const passed = parseInt(get('testsPassedInput')?.value || '0', 10);
+  const total = parseInt(get('testsTotalInput')?.value || '0', 10);
+  edited.testCases = { passed: isNaN(passed)?0:passed, total: isNaN(total)?0:total };
+  edited.code = get('codeInput')?.value || edited.code;
+  return edited;
 }
 
 // Escape HTML to prevent XSS
@@ -121,10 +128,12 @@ extractBtn.addEventListener('click', async () => {
 
         if (response && response.success) {
           currentData = response.data;
-          dataPreview.innerHTML = formatDataPreview(currentData);
+          renderEditableForm(currentData);
           notesSection.style.display = 'block';
           saveSection.style.display = 'block';
           submissionsList.style.display = 'none';
+          editingFromList = false;
+          saveBtn.textContent = 'Save Submission';
           showMessage('Data extracted successfully!');
         } else {
           showMessage('Failed to extract data. Make sure you\'re on a submission page.', 'error');
@@ -146,34 +155,46 @@ saveBtn.addEventListener('click', () => {
     return;
   }
 
+  // Merge edits from the form into currentData
+  currentData = collectFormEditsInto(currentData);
+
   // Add notes to data
   currentData.notes = notesInput.value;
-
-  // Generate unique ID
-  currentData.id = Date.now().toString();
 
   // Save to Chrome storage
   chrome.storage.local.get(['submissions'], (result) => {
     const submissions = result.submissions || [];
-    submissions.unshift(currentData); // Add to beginning
-    
-    // Keep only last 100 submissions
-    if (submissions.length > 100) {
-      submissions.length = 100;
+    if (editingFromList && currentData.id) {
+      const idx = submissions.findIndex(s => s.id === currentData.id);
+      if (idx !== -1) {
+        submissions[idx] = { ...submissions[idx], ...currentData };
+      } else {
+        // Fallback: add if not found
+        submissions.unshift(currentData);
+      }
+      chrome.storage.local.set({ submissions }, () => {
+        showMessage('Submission updated!');
+      });
+    } else {
+      // Generate unique ID for new save
+      currentData.id = Date.now().toString();
+      submissions.unshift(currentData); // Add to beginning
+      // Keep only last 100 submissions
+      if (submissions.length > 100) {
+        submissions.length = 100;
+      }
+      chrome.storage.local.set({ submissions }, () => {
+        showMessage('Submission saved successfully!');
+        notesInput.value = '';
+        // Optionally clear the preview after saving
+        setTimeout(() => {
+          dataPreview.innerHTML = '';
+          notesSection.style.display = 'none';
+          saveSection.style.display = 'none';
+          currentData = null;
+        }, 1500);
+      });
     }
-
-    chrome.storage.local.set({ submissions }, () => {
-      showMessage('Submission saved successfully!');
-      notesInput.value = '';
-      
-      // Optionally clear the preview after saving
-      setTimeout(() => {
-        dataPreview.innerHTML = '';
-        notesSection.style.display = 'none';
-        saveSection.style.display = 'none';
-        currentData = null;
-      }, 1500);
-    });
   });
 });
 
@@ -187,9 +208,12 @@ viewAllBtn.addEventListener('click', () => {
     } else {
       submissionsList.innerHTML = submissions.map(sub => `
         <div class="submission-item" data-id="${sub.id}">
-          <strong>${sub.problemName}</strong>
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+            <strong>${sub.problemName}</strong>
+            <button class="delete-btn" data-id="${sub.id}" title="Delete" style="padding:2px 6px; font-size:11px; line-height:1; background:#2a1e1e; color:#ef4743; border-radius:3px;">Delete</button>
+          </div>
           <div style="font-size: 12px; color: #888; margin-top: 4px;">
-            ${sub.language} • ${sub.status} • ${new Date(sub.timestamp).toLocaleDateString()}
+            ${sub.language || 'Unknown'} • ${sub.status} • ${new Date(sub.timestamp).toLocaleDateString()}
           </div>
           ${sub.notes ? `<div style="font-size: 11px; color: #aaa; margin-top: 2px; font-style: italic;">${escapeHtml(sub.notes.substring(0, 50))}${sub.notes.length > 50 ? '...' : ''}</div>` : ''}
         </div>
@@ -202,12 +226,30 @@ viewAllBtn.addEventListener('click', () => {
           const submission = submissions.find(s => s.id === id);
           if (submission) {
             currentData = submission;
-            dataPreview.innerHTML = formatDataPreview(submission);
+            renderEditableForm(submission);
             notesInput.value = submission.notes || '';
             notesSection.style.display = 'block';
-            saveSection.style.display = 'none';
+            saveSection.style.display = 'block';
+            editingFromList = true;
+            saveBtn.textContent = 'Update Submission';
             submissionsList.style.display = 'none';
           }
+        });
+      });
+
+      // Delete handlers
+      document.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const id = btn.getAttribute('data-id');
+          if (!id) return;
+          if (!confirm('Delete this submission?')) return;
+          const remaining = submissions.filter(s => s.id !== id);
+          chrome.storage.local.set({ submissions: remaining }, () => {
+            showMessage('Submission deleted');
+            // Refresh list view
+            viewAllBtn.click();
+          });
         });
       });
     }
