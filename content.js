@@ -4,6 +4,108 @@ class LeetCodeExtractor {
       this.data = {};
     }
   
+    // ==== __NEXT_DATA__ helpers (prefer these over DOM scraping when available) ====
+    getNextData() {
+      const el = document.getElementById('__NEXT_DATA__');
+      if (!el) return null;
+      try {
+        return JSON.parse(el.textContent);
+      } catch (e) {
+        return null;
+      }
+    }
+
+    getProblemFromNextData() {
+      const data = this.getNextData();
+      if (!data) return null;
+      const props = data.props || {};
+      const pageProps = props.pageProps || {};
+      const candidates = [
+        pageProps.questionData,
+        pageProps.question,
+        pageProps.dehydratedState,
+        pageProps
+      ];
+      for (const c of candidates) {
+        if (!c) continue;
+        if (c.title && c.content) return c;
+        if (c.queries && Array.isArray(c.queries)) {
+          for (const q of c.queries) {
+            const v = q && q.state && q.state.data;
+            if (v && v.question && v.question.content) return v.question;
+            if (v && v.content && v.title) return v;
+          }
+        }
+        if (c.question && c.question.content) return c.question;
+      }
+      return null;
+    }
+
+    getSubmissionFromNextData() {
+      const data = this.getNextData();
+      if (!data) return null;
+      const props = data.props || {};
+      const pageProps = props.pageProps || {};
+      const candidates = [
+        pageProps.submissionDetails,
+        pageProps.submissionData,
+        pageProps.dehydratedState
+      ];
+      for (const c of candidates) {
+        if (!c) continue;
+        if (c.code || c.submissionCode) {
+          return {
+            code: c.code || c.submissionCode,
+            lang: c.lang || c.language || c.langSlug
+          };
+        }
+        if (c.queries && Array.isArray(c.queries)) {
+          for (const q of c.queries) {
+            const v = q && q.state && q.state.data;
+            const s = v && (v.submissionDetails || v);
+            if (s && (s.code || s.submissionCode)) {
+              return {
+                code: s.code || s.submissionCode,
+                lang: s.lang || s.language || s.langSlug
+              };
+            }
+          }
+        }
+      }
+      return null;
+    }
+
+    // Prefer Monaco API when available, then DOM fallback
+    getMonacoCodeSafely() {
+      try {
+        if (window.monaco && window.monaco.editor && window.monaco.editor.getModels) {
+          const models = window.monaco.editor.getModels();
+          if (models && models.length) {
+            const value = models[0].getValue();
+            if (value && value.trim().length > 0) return value;
+          }
+        }
+      } catch (e) {}
+      // DOM fallback stitched lines
+      const monacoEditor = document.querySelector('.monaco-editor');
+      if (!monacoEditor) return null;
+      const viewLines = monacoEditor.querySelector('.view-lines');
+      if (!viewLines) return null;
+      const lineElements = Array.from(viewLines.querySelectorAll('.view-line'));
+      const linesWithNumbers = [];
+      for (const line of lineElements) {
+        const topStyle = line.style.top;
+        if (topStyle) {
+          const topPx = parseInt(topStyle);
+          const lineText = line.innerText || line.textContent || '';
+          linesWithNumbers.push({ top: topPx, text: lineText });
+        }
+      }
+      linesWithNumbers.sort((a, b) => a.top - b.top);
+      const stitched = linesWithNumbers.map(item => item.text).join('\n');
+      return stitched && stitched.trim().length ? stitched : null;
+    }
+
     // Wait for element to appear in DOM
     waitForElement(selector, timeout = 5000) {
       return new Promise((resolve, reject) => {
@@ -149,6 +251,13 @@ class LeetCodeExtractor {
     async extractCode() {
       console.log('Extracting code...');
       
+      // Prefer Monaco API when available
+      const monacoApiValue = this.getMonacoCodeSafely();
+      if (monacoApiValue && monacoApiValue.length > 10) {
+        console.log('Got code from Monaco API / stitched DOM, length:', monacoApiValue.length);
+        return monacoApiValue;
+      }
+
       // Find Monaco editor
       const monacoEditor = document.querySelector('.monaco-editor');
       if (!monacoEditor) {
@@ -399,18 +508,24 @@ class LeetCodeExtractor {
         console.log('=== Starting extraction ===');
         // Wait a bit for the page to fully load
         await new Promise(resolve => setTimeout(resolve, 2000));
-  
+
+        // First, try pulling from Next.js data payload
+        const problem = this.getProblemFromNextData();
+        const submission = this.getSubmissionFromNextData();
+
         this.data = {
-          problemName: this.extractProblemName(),
-          difficulty: this.extractDifficulty(),
-          language: this.extractLanguage(),
-          code: await this.extractCode(), // Now awaiting the async method
+          problemName: (problem && problem.title) || this.extractProblemName(),
+          difficulty: (problem && problem.difficulty) || this.extractDifficulty(),
+          language: (submission && (submission.lang)) || this.extractLanguage(),
+          code: (submission && submission.code) || await this.extractCode(),
           status: this.extractStatus(),
           testCases: this.extractTestCases(),
           performance: this.extractPerformance(),
           url: window.location.href,
           timestamp: new Date().toISOString(),
-          notes: ''
+          notes: '',
+          tags: Array.isArray(problem && problem.topicTags) ? problem.topicTags.map(t => t.name) : [],
+          descriptionHTML: (problem && problem.content) || null
         };
   
         console.log('=== Extracted data ===', this.data);
