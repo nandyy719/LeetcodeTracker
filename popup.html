@@ -144,24 +144,6 @@
       margin-top: 8px;
     }
 
-    input[type="text"], input[type="number"], select {
-      width: 100%;
-      background: #2d2d2d;
-      border: 1px solid #3d3d3d;
-      border-radius: 6px;
-      padding: 8px;
-      color: #e0e0e0;
-      font-family: inherit;
-      font-size: 13px;
-      margin-top: 6px;
-    }
-
-    .inline-fields {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-    }
-
     .submissions-list {
       max-height: 300px;
       overflow-y: auto;
@@ -217,6 +199,55 @@
     ::-webkit-scrollbar-thumb:hover {
       background: #5d5d5d;
     }
+
+    .topics-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .topic-tag {
+      background: rgba(255, 161, 22, 0.15);
+      color: #ffa116;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      border: 1px solid rgba(255, 161, 22, 0.3);
+    }
+
+    .gemini-code {
+      background: #1a1a1a;
+      border: 1px solid #3d3d3d;
+      border-radius: 4px;
+      padding: 12px;
+      font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      overflow-x: auto;
+      white-space: pre;
+      color: #d4d4d4;
+      margin: 12px 0;
+    }
+
+    .complexity-badge {
+      display: inline-block;
+      background: rgba(0, 184, 122, 0.15);
+      color: #00b77a;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-family: monospace;
+      margin-right: 8px;
+    }
+
+    #contentModal a {
+      color: #ffa116;
+      text-decoration: none;
+    }
+
+    #contentModal a:hover {
+      text-decoration: underline;
+    }
   </style>
 </head>
 <body>
@@ -242,6 +273,57 @@
 
   <div id="submissionsList" class="submissions-list" style="display: none;"></div>
 
+  <!-- Gemini Analysis Section -->
+  <div id="geminiSection" style="display: none; margin-top: 12px;">
+    <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+      <button id="analyzeBtn" class="primary" style="flex: 1;">Analyze with Gemini</button>
+      <button id="configBtn" style="flex: 0 0 auto; padding: 10px 12px;">⚙️</button>
+    </div>
+    
+    <div id="geminiResults" style="display: none;">
+      <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+        <button id="viewSolutionBtn" style="flex: 1; font-size: 12px;">View Gemini Solution</button>
+        <button id="viewNotesBtn" style="flex: 1; font-size: 12px;">View Gemini Notes</button>
+      </div>
+      
+      <div id="geminiTopics" class="topics-container" style="margin-top: 8px;"></div>
+    </div>
+  </div>
+
+  <!-- Gemini Config Modal -->
+  <div id="configModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 1000; padding: 20px;">
+    <div style="background: #2d2d2d; border-radius: 8px; padding: 20px; max-width: 400px; margin: 40px auto;">
+      <h2 style="margin-bottom: 16px; font-size: 18px;">Gemini API Configuration</h2>
+      
+      <div class="field">
+        <label class="field-label">API Key</label>
+        <input type="password" id="apiKeyInput" placeholder="Enter your Gemini API key">
+      </div>
+      
+      <div style="font-size: 11px; color: #888; margin-top: 8px; line-height: 1.4;">
+        Get your API key from <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color: #ffa116;">Google AI Studio</a><br>
+        No Gem required - we use built-in instructions!
+      </div>
+      
+      <div style="display: flex; gap: 8px; margin-top: 16px;">
+        <button id="saveConfigBtn" class="primary" style="flex: 1;">Save</button>
+        <button id="cancelConfigBtn" style="flex: 1;">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Gemini Content Modal -->
+  <div id="contentModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 1000; padding: 20px; overflow-y: auto;">
+    <div style="background: #2d2d2d; border-radius: 8px; padding: 20px; max-width: 600px; margin: 20px auto;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <h2 id="contentModalTitle" style="font-size: 18px;">Content</h2>
+        <button id="closeContentBtn" style="background: transparent; color: #888; font-size: 24px; padding: 0; width: 32px; height: 32px;">×</button>
+      </div>
+      <div id="contentModalBody" style="max-height: 60vh; overflow-y: auto;"></div>
+    </div>
+  </div>
+
+  <script src="gemini-api.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
